@@ -2,9 +2,8 @@
  * @file components/PropertyEditor.tsx
  * @description Right-side panel for editing formation metadata and block properties.
  */
-import type { PropertyEditorProps, Block, BlockUpdate } from '../types';
-import { UNIT_COLORS, UNIT_CATEGORY_MAP, ALL_ENTITY_TYPES } from '../constants/units';
-import { ALL_PURPOSES, ALL_ARRANGEMENTS } from '../constants/formations';
+import type { PropertyEditorProps, Block, BlockUpdate, MinCategory } from '../types';
+import { ALL_ARRANGEMENTS } from '../constants/formations';
 import type { Arrangement, UnitCategoryKey, Purpose } from '../types';
 import { getBlockColor, getBlockLabel } from '../utils/blockHelpers';
 import { r2 } from '../utils/positions';
@@ -19,12 +18,18 @@ const CATEGORY_BUTTONS: CategoryButton[] = [
 ];
 
 export default function PropertyEditor({
-  formation, selectedBlockId, selectedBlockIds = new Set(), onUpdateFormation,
+  formation, selectedBlockId, selectedBlockIds = new Set(), config, onUpdateFormation,
   onUpdateBlock, onBulkUpdateBlocks, onAddBlock, onDeleteBlock, onDuplicateBlock,
 }: PropertyEditorProps): JSX.Element {
   if (!formation) return <div style={S.panel}><div style={{ ...S.panelSection, color: "#666", fontSize: 15 }}>No formation selected</div></div>;
 
   const block: Block | undefined = formation.blocks.find(b => b.id === selectedBlockId);
+  const entityOptions = [...config.landEntityTypes, ...config.navalEntityTypes];
+
+  const updateMinCategory = (i: number, patch: Partial<MinCategory>): void => {
+    const next = formation.minCategories.map((m, idx) => idx === i ? { ...m, ...patch } : m);
+    onUpdateFormation({ minCategories: next });
+  };
 
   return (
     <div style={S.panel}>
@@ -41,7 +46,7 @@ export default function PropertyEditor({
           <div style={{ marginBottom: 10 }}>
             <span style={S.label}>AI Purpose</span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {ALL_PURPOSES.map(p => (
+              {config.allPurposes.map(p => (
                 <label key={p} style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
                   <input type="checkbox" checked={formation.purposes.includes(p)}
                     onChange={e => { const next = e.target.checked ? [...formation.purposes, p] : formation.purposes.filter(pp => pp !== p); onUpdateFormation({ purposes: next as Purpose[] }); }} />{p}
@@ -49,11 +54,35 @@ export default function PropertyEditor({
               ))}
             </div>
           </div>
-          <div style={S.row}>
-            <div style={{ flex: 1 }}><span style={S.label}>Min Inf %</span><input style={S.input} type="number" value={formation.min_infantry} onChange={e => onUpdateFormation({ min_infantry: parseInt(e.target.value) || 0 })} /></div>
-            <div style={{ flex: 1 }}><span style={S.label}>Min Cav %</span><input style={S.input} type="number" value={formation.min_cavalry} onChange={e => onUpdateFormation({ min_cavalry: parseInt(e.target.value) || 0 })} /></div>
-            <div style={{ flex: 1 }}><span style={S.label}>Min Art %</span><input style={S.input} type="number" value={formation.min_artillery} onChange={e => onUpdateFormation({ min_artillery: parseInt(e.target.value) || 0 })} /></div>
-          </div>
+
+          {config.metadataKind === "ntw-mins" ? (
+            <div style={S.row}>
+              <div style={{ flex: 1 }}><span style={S.label}>Min Inf %</span><input style={S.input} type="number" value={formation.min_infantry} onChange={e => onUpdateFormation({ min_infantry: parseInt(e.target.value) || 0 })} /></div>
+              <div style={{ flex: 1 }}><span style={S.label}>Min Cav %</span><input style={S.input} type="number" value={formation.min_cavalry} onChange={e => onUpdateFormation({ min_cavalry: parseInt(e.target.value) || 0 })} /></div>
+              <div style={{ flex: 1 }}><span style={S.label}>Min Art %</span><input style={S.input} type="number" value={formation.min_artillery} onChange={e => onUpdateFormation({ min_artillery: parseInt(e.target.value) || 0 })} /></div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 10 }}>
+              <div style={S.row}><span style={{ ...S.label, flex: 1, marginBottom: 0 }}>Min Unit Category %</span>
+                <button style={S.btnSmall} onClick={() => onUpdateFormation({ minCategories: [...formation.minCategories, { category: config.allCategories[0], percentage: 50 }] })}>+ Add</button></div>
+              {formation.minCategories.length === 0 && <div style={{ fontSize: 12, color: "#667", marginTop: 4 }}>No category requirements.</div>}
+              {formation.minCategories.map((mc, i) => (
+                <div key={i} style={{ ...S.entityRow, marginTop: 6 }}>
+                  <select style={{ ...S.select, flex: 1, fontSize: 13 }} value={mc.category}
+                    onChange={e => updateMinCategory(i, { category: e.target.value })}>
+                    {config.allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    {!config.allCategories.includes(mc.category) && <option value={mc.category}>{mc.category}</option>}
+                  </select>
+                  <input style={{ ...S.input, width: 64, padding: "6px 6px" }} type="number" min="0" max="100" value={mc.percentage}
+                    onChange={e => updateMinCategory(i, { percentage: parseInt(e.target.value) || 0 })} />
+                  <span style={{ fontSize: 13, color: "#778" }}>%</span>
+                  <button style={{ ...S.btnSmall, color: "#e94560", padding: "4px 8px" }}
+                    onClick={() => onUpdateFormation({ minCategories: formation.minCategories.filter((_, idx) => idx !== i) })}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ marginBottom: 8 }}><span style={S.label}>Factions (comma-separated)</span>
             <input style={S.input} value={formation.factions.join(", ")} onChange={e => onUpdateFormation({ factions: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} /></div>
         </div>
@@ -91,8 +120,8 @@ export default function PropertyEditor({
                           const next = e.target.checked ? [...block.spannedBlocks, b.id].sort((a, c) => a - c) : block.spannedBlocks.filter(x => x !== b.id);
                           onUpdateBlock(block.id, { spannedBlocks: next });
                         }} />
-                        <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: getBlockColor(b), flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, color: "#ccc" }}>#{b.id} {getBlockLabel(b).toUpperCase()}</span>
+                        <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: getBlockColor(b, config), flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, color: "#ccc" }}>#{b.id} {getBlockLabel(b, config).toUpperCase()}</span>
                         <span style={{ fontSize: 11, color: "#667", marginLeft: "auto" }}>{b.type}</span>
                       </label>
                     );
@@ -131,12 +160,12 @@ export default function PropertyEditor({
               </div>
               <div style={{ marginTop: 10 }}>
                 <div style={S.row}><span style={{ ...S.label, flex: 1, marginBottom: 0 }}>Entity Preferences</span>
-                  <button style={S.btnSmall} onClick={() => { onUpdateBlock(block.id, { entities: [...block.entities, { priority: 1.0, description: "infantry_line" }] }); }}>+ Add</button></div>
+                  <button style={S.btnSmall} onClick={() => { onUpdateBlock(block.id, { entities: [...block.entities, { priority: 1.0, description: config.defaultEntity }] }); }}>+ Add</button></div>
                 <div style={{ display: "flex", gap: 4, marginTop: 6, marginBottom: 6, flexWrap: "wrap" }}>
                   {CATEGORY_BUTTONS.map(({ label, cat, bg, fg }) => (
                     <button key={cat} style={{ ...S.btnSmall, background: bg, color: fg, fontSize: 11 }} onClick={() => {
                       const existing = new Set(block.entities.map(e => e.description));
-                      const toAdd = UNIT_CATEGORY_MAP[cat].filter(t => !existing.has(t)).map(t => ({ priority: 1.0, description: t }));
+                      const toAdd = config.unitCategoryMap[cat].filter(t => !existing.has(t)).map(t => ({ priority: 1.0, description: t }));
                       if (toAdd.length) onUpdateBlock(block.id, { entities: [...block.entities, ...toAdd] });
                     }}>{label}</button>
                   ))}
@@ -144,12 +173,14 @@ export default function PropertyEditor({
                 </div>
                 {block.entities.map((ent, ei) => (
                   <div key={ei} style={S.entityRow}>
-                    <span style={S.badge(UNIT_COLORS[ent.description] || "#666")} />
+                    <span style={S.badge(config.unitColors[ent.description] || "#666")} />
                     <input style={{ ...S.input, width: 60, padding: "6px 6px" }} type="number" step="0.1" min="0" max="1" value={r2(ent.priority)}
                       onChange={e => { const ne = [...block.entities]; ne[ei] = { ...ne[ei], priority: r2(parseFloat(e.target.value) || 0) }; onUpdateBlock(block.id, { entities: ne }); }} />
                     <select style={{ ...S.select, flex: 1, fontSize: 13 }} value={ent.description}
                       onChange={e => { const ne = [...block.entities]; ne[ei] = { ...ne[ei], description: e.target.value }; onUpdateBlock(block.id, { entities: ne }); }}>
-                      {[...ALL_ENTITY_TYPES, ...UNIT_CATEGORY_MAP.naval].map(t => <option key={t} value={t}>{t}</option>)}</select>
+                      {entityOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                      {!entityOptions.includes(ent.description) && <option value={ent.description}>{ent.description}</option>}
+                    </select>
                     <button style={{ ...S.btnSmall, color: "#e94560", padding: "4px 8px" }}
                       onClick={() => { onUpdateBlock(block.id, { entities: block.entities.filter((_, i) => i !== ei) }); }}>✕</button>
                   </div>

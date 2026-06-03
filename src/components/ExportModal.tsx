@@ -1,6 +1,6 @@
 /**
  * @file components/ExportModal.tsx
- * @description Export dialog supporting binary .bin download and Ruby .txt copy/download.
+ * @description Export dialog supporting binary .bin download and (NTW only) Ruby .txt.
  */
 import { useState, useMemo } from 'react';
 import type { ExportModalProps } from '../types';
@@ -9,15 +9,16 @@ import S from '../constants/styles';
 
 type ExportFormat = "bin" | "ruby";
 
-export default function ExportModal({ formations, onClose }: ExportModalProps): JSX.Element {
+export default function ExportModal({ formations, config, onClose }: ExportModalProps): JSX.Element {
   const [format, setFormat] = useState<ExportFormat>("bin");
   const rubyOutput = useMemo<string>(() => {
+    if (!config.supportsRuby) return "";
     try { return exportToRubyText(formations); } catch (e) { return "Error: " + (e instanceof Error ? e.message : String(e)); }
-  }, [formations]);
+  }, [formations, config.supportsRuby]);
 
   const downloadBin = (): void => {
     try {
-      const buf = exportToBinary(formations);
+      const buf = exportToBinary(formations, config);
       const blob = new Blob([buf], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = "groupformations.bin";
@@ -35,17 +36,19 @@ export default function ExportModal({ formations, onClose }: ExportModalProps): 
 
   return (
     <div style={S.modal} onClick={onClose}><div style={S.modalContent} onClick={e=>e.stopPropagation()}>
-      <div style={{...S.row,marginBottom:14}}><h3 style={{margin:0,flex:1,fontSize:20}}>Export Formations ({formations.length})</h3><button style={S.btnSmall} onClick={onClose}>✕</button></div>
-      <div style={{...S.row,marginBottom:10}}>
-        <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="bin"} onChange={()=>setFormat("bin")}/> Binary (.bin)</label>
-        <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="ruby"} onChange={()=>setFormat("ruby")}/> Ruby .txt (taw)</label>
-      </div>
+      <div style={{...S.row,marginBottom:14}}><h3 style={{margin:0,flex:1,fontSize:20}}>Export Formations ({formations.length}) <span style={{fontSize:13,color:"#7777aa"}}>· {config.shortLabel}</span></h3><button style={S.btnSmall} onClick={onClose}>✕</button></div>
+      {config.supportsRuby && (
+        <div style={{...S.row,marginBottom:10}}>
+          <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="bin"} onChange={()=>setFormat("bin")}/> Binary (.bin)</label>
+          <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="ruby"} onChange={()=>setFormat("ruby")}/> Ruby .txt (taw)</label>
+        </div>
+      )}
       {format==="bin" ? (
         <div style={{padding:"30px 20px",background:"#1a1a35",borderRadius:6,textAlign:"center"}}>
           <div style={{fontSize:16,color:"#ccc",marginBottom:12}}>📦 groupformations.bin</div>
-          <div style={{fontSize:13,color:"#667",marginBottom:16}}>{formations.length} formations · Ready to pack</div>
+          <div style={{fontSize:13,color:"#667",marginBottom:16}}>{formations.length} formations · {config.label}</div>
           <button style={{...S.btn(true),fontSize:16,padding:"12px 32px"}} onClick={downloadBin}>⬇ Download .bin</button>
-          <div style={{fontSize:12,color:"#556",marginTop:12}}>Place in data/groupformations/ to use in-game</div>
+          <div style={{fontSize:12,color:"#556",marginTop:12}}>Place in your {config.shortLabel} data pack to use in-game</div>
         </div>
       ) : (
         <>

@@ -8,7 +8,7 @@ import { getBlockColor, getBlockLabel } from '../utils/blockHelpers';
 import { r2 } from '../utils/positions';
 import S from '../constants/styles';
 
-export default function AnchorPromptModal({ deletingId, candidates, onConfirm, onCancel }: AnchorPromptModalProps): JSX.Element {
+export default function AnchorPromptModal({ deletingId, candidates, config, onConfirm, onCancel }: AnchorPromptModalProps): JSX.Element {
   const [chosen, setChosen] = useState<number>(candidates[0]?.id ?? 0);
 
   return (
@@ -24,8 +24,8 @@ export default function AnchorPromptModal({ deletingId, candidates, onConfirm, o
         </p>
         <div style={{ maxHeight: 280, overflowY: "auto", background: "#1a1a35", borderRadius: 6, padding: 6 }}>
           {candidates.map(b => {
-            const color = getBlockColor(b);
-            const label = getBlockLabel(b).toUpperCase();
+            const color = getBlockColor(b, config);
+            const label = getBlockLabel(b, config).toUpperCase();
             const active = chosen === b.id;
             return (
               <div key={b.id} onClick={() => setChosen(b.id)} style={{

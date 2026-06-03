@@ -1,8 +1,8 @@
 /**
  * @file utils/exporters.ts
- * @description Exporters: binary .bin (port of taw's gfpack) and Ruby .txt.
+ * @description Exporters: binary .bin (NTW + Shogun 2) and taw's Ruby .txt (NTW only).
  */
-import type { Formation, Arrangement } from '../types';
+import type { Formation, Arrangement, GameConfig } from '../types';
 import { PURPOSE_TO_BITS, SHAPE_TO_INT } from '../constants/formations';
 import { UNIT_CLASS_STR_TO_INT } from '../constants/units';
 
@@ -10,6 +10,7 @@ const SHAPE_LABELS: Record<Arrangement, string> = {
   Line:"line", Column:"column", CrescentFront:"crescent front", CrescentBack:"crescent back",
 };
 
+/** Ruby (.txt) export — NTW only; uses NTW's enum and metadata layout. */
 export function exportToRubyText(formations: Formation[]): string {
   return "[" + formations.map(f => {
     const pb = f.purposes.reduce((a,p) => a | (PURPOSE_TO_BITS[p] || 0), 0);
@@ -38,8 +39,8 @@ export function exportToRubyText(formations: Formation[]): string {
   }).join(",\n\n") + "]\n";
 }
 
-/** Port of taw's gfpack — writes groupformations.bin via DataView. */
-export function exportToBinary(formations: Formation[]): ArrayBuffer {
+/** Writes a groupformations.bin for the given game. */
+export function exportToBinary(formations: Formation[], game: GameConfig): ArrayBuffer {
   let buf = new ArrayBuffer(1024 * 256);
   let dv = new DataView(buf);
   let off = 0;
@@ -59,7 +60,7 @@ export function exportToBinary(formations: Formation[]): ArrayBuffer {
   };
   const wPairs = (entities: {priority:number;description:string}[]): void => {
     wU4(entities.length);
-    entities.forEach(e=>{ wFlt(e.priority); wI4(UNIT_CLASS_STR_TO_INT[e.description]??0); });
+    entities.forEach(e=>{ wFlt(e.priority); wI4(game.unitClassStrToInt[e.description]??0); });
   };
   const wLine = (b: Formation["blocks"][number]): void => {
     if(b.type==="absolute"){ wU4(0); wFlt(0.0); wFlt(b.blockPriority); wU4(SHAPE_TO_INT[b.arrangement]??0);
@@ -71,8 +72,13 @@ export function exportToBinary(formations: Formation[]): ArrayBuffer {
   wU4(formations.length);
   formations.forEach(f=>{
     wStr(f.name); wFlt(f.priority);
-    wU4(f.purposes.reduce((a,p)=>a|(PURPOSE_TO_BITS[p]||0),0));
-    wU4(f.min_artillery); wU4(f.min_infantry); wU4(f.min_cavalry);
+    wU4(f.purposes.reduce((a,p)=>a|(game.purposeToBits[p]||0),0));
+    if (game.metadataKind === "ntw-mins") {
+      wU4(f.min_artillery); wU4(f.min_infantry); wU4(f.min_cavalry);
+    } else {
+      wU4(f.minCategories.length);
+      f.minCategories.forEach(m=>{ wU4(game.categoryStrToInt[m.category]??0); wU4(m.percentage); });
+    }
     wU4(f.factions.length); f.factions.forEach(fc=>wStr(fc));
     f.blocks.forEach((line,i)=>{ wU4(i===0?f.blocks.length:i); wLine(line); });
   });

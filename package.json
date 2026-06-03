@@ -1,7 +1,7 @@
 {
   "name": "ntw-formation-editor",
-  "version": "1.0.0",
-  "description": "Visual editor for Napoleon Total War groupformations.bin — import/export XML and taw's Ruby format, drag-and-drop 2D canvas, full block property editing",
+  "version": "1.1.0",
+  "description": "Visual editor for Total War groupformations.bin (Napoleon & Shogun 2) — import/export binary and taw's Ruby format, drag-and-drop 2D canvas, full block property editing",
   "private": true,
   "type": "module",
   "scripts": {
@@ -23,6 +23,8 @@
   "keywords": [
     "napoleon-total-war",
     "ntw",
+    "shogun-2",
+    "total-war",
     "modding",
     "formation-editor",
     "groupformations"

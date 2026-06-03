@@ -3,8 +3,9 @@
  * @description Root application component — all state management, sidebar, settings, modals.
  */
 import { useState, useRef, useCallback } from 'react';
-import type { Formation, Block, AbsoluteBlock, RelativeBlock, AnchorPromptState, BlockUpdate } from './types';
+import type { Formation, Block, AbsoluteBlock, RelativeBlock, AnchorPromptState, BlockUpdate, GameId } from './types';
 import { createDefaultFormation } from './utils/blockHelpers';
+import { getGame, GAME_LIST, DEFAULT_GAME } from './constants/games';
 import { r2 } from './utils/positions';
 import FormationCanvas from './components/FormationCanvas';
 import PropertyEditor from './components/PropertyEditor';
@@ -14,6 +15,8 @@ import AnchorPromptModal from './components/AnchorPromptModal';
 import S from './constants/styles';
 
 export default function App(): JSX.Element {
+  const [game, setGame] = useState<GameId>(DEFAULT_GAME);
+  const config = getGame(game);
   const [formations, setFormations] = useState<Formation[]>([]);
   const [selectedFormationIdx, setSelectedFormationIdx] = useState<number>(-1);
   const [selectedIdxs, setSelectedIdxs] = useState<Set<number>>(new Set());
@@ -81,10 +84,10 @@ export default function App(): JSX.Element {
       const nid = Math.max(...f.blocks.map(b => b.id), -1) + 1;
       const nb: Block = type === "spanning"
         ? { id: nid, type: "spanning", spannedBlocks: f.blocks.filter(b => b.type !== "spanning").map(b => b.id) }
-        : { id: nid, type: "relative", blockPriority: 0.5, arrangement: "Line", spacing: 2, crescentYOffset: 0, x: 0, y: -10, relativeToBlock: 0, minThreshold: 0, maxThreshold: -1, entities: [{ priority: 1, description: "infantry_line" }] };
+        : { id: nid, type: "relative", blockPriority: 0.5, arrangement: "Line", spacing: 2, crescentYOffset: 0, x: 0, y: -10, relativeToBlock: 0, minThreshold: 0, maxThreshold: -1, entities: [{ priority: 1, description: config.defaultEntity }] };
       return { ...f, blocks: [...f.blocks, nb] };
     }));
-  }, [selectedFormationIdx]);
+  }, [selectedFormationIdx, config]);
 
   const performDelete = useCallback((bid: number, newAnchorId: number | null): void => {
     let newSelBlockId: number | null = selectedBlockId;
@@ -157,6 +160,13 @@ export default function App(): JSX.Element {
 
   const clearBlockSelection = (): void => { setSelectedBlockId(null); setSelectedBlockIds(new Set()); };
 
+  const handleGameChange = (g: GameId): void => {
+    if (g === game) return;
+    if (formations.length && !window.confirm("Switching games clears the loaded formations — unit IDs and purposes are game-specific. Continue?")) return;
+    setGame(g);
+    setFormations([]); setSelectedFormationIdx(-1); setSelectedIdxs(new Set()); clearBlockSelection();
+  };
+
   interface SettingSlider { label: string; value: number; set: (v: number) => void; min: number; max: number; step: number; presets: number[]; suffix?: string; }
   const settingSliders: SettingSlider[] = [
     { label: "Position Scale X", value: posScaleX, set: setPosScaleX, min: 0.01, max: 2.0, step: 0.01, presets: [0.05, 0.10, 0.25, 0.5] },
@@ -168,6 +178,13 @@ export default function App(): JSX.Element {
   return (
     <div style={S.app}>
       <div style={S.sidebar}>
+        <div style={{ ...S.sidebarHeader, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ flex: 1 }}>Game</span>
+          <select value={game} onChange={e => handleGameChange(e.target.value as GameId)}
+            style={{ ...S.select, width: "auto", padding: "4px 8px", fontSize: 13, textTransform: "none", letterSpacing: 0 }} title="Select Total War title">
+            {GAME_LIST.map(g => <option key={g.id} value={g.id}>{g.shortLabel}</option>)}
+          </select>
+        </div>
         <div style={{ ...S.sidebarHeader, display: "flex", alignItems: "center" }}>
           <span style={{ flex: 1 }}>Formations</span><span style={{ fontSize: 12, color: "#555" }}>{formations.length}</span>
         </div>
@@ -178,7 +195,7 @@ export default function App(): JSX.Element {
           </button>
           <button style={S.btn(false)} onClick={() => {
             const ni = formations.length;
-            setFormations(p => [...p, createDefaultFormation()]);
+            setFormations(p => [...p, createDefaultFormation(config)]);
             setSelectedFormationIdx(ni); setSelectedIdxs(new Set([ni])); clearBlockSelection();
           }}>+ New</button>
           <button style={{ ...S.btn(false), marginLeft: "auto" }} onClick={() => setShowInfo(true)} title="Important warnings">ℹ️</button>
@@ -257,17 +274,17 @@ export default function App(): JSX.Element {
       </div>
 
       <FormationCanvas formation={formation} selectedBlockId={selectedBlockId} selectedBlockIds={selectedBlockIds}
-        onSelectBlock={handleBlockSelect} onUpdateBlock={updateBlock}
+        onSelectBlock={handleBlockSelect} onUpdateBlock={updateBlock} config={config}
         posScaleX={posScaleX} posScaleY={posScaleY} blockScale={blockScale} blockThickness={blockThickness} />
-      <PropertyEditor formation={formation} selectedBlockId={selectedBlockId} selectedBlockIds={selectedBlockIds}
+      <PropertyEditor formation={formation} selectedBlockId={selectedBlockId} selectedBlockIds={selectedBlockIds} config={config}
         onUpdateFormation={updateFormation} onUpdateBlock={updateBlock} onBulkUpdateBlocks={bulkUpdateBlocks}
         onAddBlock={addBlock} onDeleteBlock={deleteBlock} onDuplicateBlock={duplicateBlock} />
 
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={nf => {
+      {showImport && <ImportModal config={config} onClose={() => setShowImport(false)} onImport={nf => {
         setFormations(nf); setSelectedFormationIdx(0); setSelectedIdxs(new Set([0])); clearBlockSelection();
       }} />}
-      {showExport && <ExportModal formations={selectedIdxs.size > 1 ? formations.filter((_, i) => selectedIdxs.has(i)) : formations} onClose={() => setShowExport(false)} />}
-      {anchorPrompt && <AnchorPromptModal deletingId={anchorPrompt.deletingId} candidates={anchorPrompt.candidates} onConfirm={confirmAnchorDelete} onCancel={() => setAnchorPrompt(null)} />}
+      {showExport && <ExportModal formations={selectedIdxs.size > 1 ? formations.filter((_, i) => selectedIdxs.has(i)) : formations} config={config} onClose={() => setShowExport(false)} />}
+      {anchorPrompt && <AnchorPromptModal deletingId={anchorPrompt.deletingId} candidates={anchorPrompt.candidates} config={config} onConfirm={confirmAnchorDelete} onCancel={() => setAnchorPrompt(null)} />}
       {showInfo && (
         <div style={S.modal} onClick={() => setShowInfo(false)}>
           <div style={{ ...S.modalContent, maxWidth: 520 }} onClick={e => e.stopPropagation()}>

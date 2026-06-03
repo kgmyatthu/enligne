@@ -1,6 +1,6 @@
 /**
  * @file components/ImportModal.tsx
- * @description Import dialog supporting binary .bin upload and Ruby .txt paste/upload.
+ * @description Import dialog supporting binary .bin upload and (NTW only) Ruby .txt.
  */
 import { useState, useRef } from 'react';
 import type { ImportModalProps } from '../types';
@@ -9,7 +9,7 @@ import S from '../constants/styles';
 
 type ImportFormat = "bin" | "ruby";
 
-export default function ImportModal({ onClose, onImport }: ImportModalProps): JSX.Element {
+export default function ImportModal({ config, onClose, onImport }: ImportModalProps): JSX.Element {
   const [text, setText] = useState<string>("");
   const [format, setFormat] = useState<ImportFormat>("bin");
   const [error, setError] = useState<string>("");
@@ -21,7 +21,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps): JS
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
-    const isBin = file.name.endsWith(".bin");
+    const isBin = file.name.endsWith(".bin") || !config.supportsRuby;
     setFormat(isBin ? "bin" : "ruby");
     const reader = new FileReader();
     if (isBin) {
@@ -37,7 +37,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps): JS
     try {
       setError("");
       const f = format === "bin"
-        ? (() => { if (!binRef.current) throw new Error("Upload a .bin file first"); return parseBinary(binRef.current); })()
+        ? (() => { if (!binRef.current) throw new Error("Upload a .bin file first"); return parseBinary(binRef.current, config); })()
         : (() => { if (!text || text.startsWith("[Binary")) throw new Error("Paste or upload Ruby .txt"); return parseRubyText(text); })();
       if (!f.length) throw new Error("No formations found");
       onImport(f); onClose();
@@ -46,17 +46,22 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps): JS
 
   return (
     <div style={S.modal} onClick={onClose}><div style={S.modalContent} onClick={e=>e.stopPropagation()}>
-      <div style={{...S.row,marginBottom:14}}><h3 style={{margin:0,flex:1,fontSize:20}}>Import Formations</h3><button style={S.btnSmall} onClick={onClose}>✕</button></div>
-      <div style={{...S.row,marginBottom:10}}>
-        <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="bin"} onChange={()=>setFormat("bin")}/> Binary (.bin)</label>
-        <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="ruby"} onChange={()=>setFormat("ruby")}/> Ruby .txt (taw)</label>
-      </div>
+      <div style={{...S.row,marginBottom:14}}><h3 style={{margin:0,flex:1,fontSize:20}}>Import Formations <span style={{fontSize:13,color:"#7777aa"}}>· {config.shortLabel}</span></h3><button style={S.btnSmall} onClick={onClose}>✕</button></div>
+      {config.supportsRuby && (
+        <div style={{...S.row,marginBottom:10}}>
+          <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="bin"} onChange={()=>setFormat("bin")}/> Binary (.bin)</label>
+          <label style={{fontSize:15,cursor:"pointer"}}><input type="radio" checked={format==="ruby"} onChange={()=>setFormat("ruby")}/> Ruby .txt (taw)</label>
+        </div>
+      )}
       <div style={{...S.row,marginBottom:10}}>
         <button style={S.btn(false)} onClick={()=>fileRef.current?.click()}>📁 Upload File {fileName && `(${fileName})`}</button>
-        <input ref={fileRef} type="file" accept=".bin,.txt" style={{display:"none"}} onChange={handleFileUpload}/>
+        <input ref={fileRef} type="file" accept={config.supportsRuby ? ".bin,.txt" : ".bin"} style={{display:"none"}} onChange={handleFileUpload}/>
         <span style={{fontSize:12,color:"#667"}}>{format==="bin"?"Select groupformations.bin":"Select .txt from gfunpack"}</span>
       </div>
-      {format==="ruby" && <textarea value={text} onChange={e=>{setText(e.target.value);binRef.current=null;}}
+      <div style={{fontSize:12,color:"#7a7a55",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:4,padding:"7px 10px",marginBottom:10}}>
+        Importing as <b style={{color:"#fbbf24"}}>{config.label}</b>. Make sure the game selector matches your file — unit names and IDs are game-specific.
+      </div>
+      {config.supportsRuby && format==="ruby" && <textarea value={text} onChange={e=>{setText(e.target.value);binRef.current=null;}}
         placeholder="Or paste taw's Ruby .txt output here..." style={{...S.input,height:280,resize:"vertical",fontFamily:"monospace",fontSize:14}}/>}
       {format==="bin" && binRef.current && (
         <div style={{padding:"20px",background:"#1a1a35",borderRadius:6,textAlign:"center",color:"#8899aa",fontSize:14}}>

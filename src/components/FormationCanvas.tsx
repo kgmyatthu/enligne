@@ -5,12 +5,11 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormationCanvasProps, ViewState, DragState, PanState, Block, BlockPosition, AbsoluteBlock, RelativeBlock } from '../types';
 import { computeAbsolutePositions, getBlockGameW, getBlockGameH, BASE_H, r2 } from '../utils/positions';
-import { getBlockColor, getBlockLabel } from '../utils/blockHelpers';
-import { UNIT_COLORS } from '../constants/units';
+import { getBlockColor, getBlockLabel, prettifyEntity } from '../utils/blockHelpers';
 import S from '../constants/styles';
 
 export default function FormationCanvas({
-  formation, selectedBlockId, selectedBlockIds, onSelectBlock, onUpdateBlock,
+  formation, selectedBlockId, selectedBlockIds, onSelectBlock, onUpdateBlock, config,
   posScaleX, posScaleY, blockScale, blockThickness,
 }: FormationCanvasProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,9 +33,9 @@ export default function FormationCanvas({
     if (vals.length === 0) return;
     const cx = vals.reduce((s, p) => s + p.ax, 0) / vals.length;
     const cy = vals.reduce((s, p) => s + p.ay, 0) / vals.length;
-    const isNaval = formation.blocks.some(b => b.type !== "spanning" && (b as AbsoluteBlock | RelativeBlock).entities.some(e => e.description.startsWith("naval_")));
+    const isNaval = formation.blocks.some(b => b.type !== "spanning" && (b as AbsoluteBlock | RelativeBlock).entities.some(e => config.unitCategoryMap.naval.includes(e.description)));
     commitView({ x: -cx, y: cy, scale: isNaval ? 1.5 : 8 });
-  }, [formation?.name, commitView, posScaleX, posScaleY, blockScale, blockThickness]);
+  }, [formation?.name, commitView, config, posScaleX, posScaleY, blockScale, blockThickness]);
 
   const positions = useMemo(
     () => formation ? computeAbsolutePositions(formation.blocks, posScaleX, posScaleY, blockScale, blockThickness) : {},
@@ -137,9 +136,9 @@ export default function FormationCanvas({
       </div>
       <div style={{ position: "absolute", top: 12, right: 14, zIndex: 10, fontSize: 13, color: "#556" }}>Zoom: {view.scale.toFixed(1)}x</div>
       <div style={{ position: "absolute", bottom: 12, left: 14, zIndex: 10, display: "flex", gap: 10, flexWrap: "wrap", maxWidth: 520 }}>
-        {(["infantry_line", "cavalry_heavy", "artillery_foot", "infantry_light", "general", "any"] as const).map(t => (
+        {config.legendEntities.map(t => (
           <span key={t} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#999" }}>
-            <span style={S.badge(UNIT_COLORS[t])} />{t.replace(/_/g, " ")}
+            <span style={S.badge(config.unitColors[t] || "#888")} />{prettifyEntity(t)}
           </span>
         ))}
       </div>
@@ -211,10 +210,10 @@ export default function FormationCanvas({
           const isCrescent = arr === "CrescentFront" || arr === "CrescentBack";
           const w = isColumn ? gameH * view.scale : gameW * view.scale;
           const h = isColumn ? gameW * view.scale : gameH * view.scale;
-          const color = getBlockColor(b);
+          const color = getBlockColor(b, config);
           const sel = selectedBlockId === b.id;
           const highlighted = sel || selectedBlockIds.has(b.id);
-          const label = getBlockLabel(b).toUpperCase();
+          const label = getBlockLabel(b, config).toUpperCase();
           const ents = b.entities;
           const dotR = Math.min(Math.max(view.scale * 0.22, 1.5), 4);
           const dotGap = dotR * 2.4;
@@ -251,7 +250,7 @@ export default function FormationCanvas({
                 const rowW = rowCount * dotGap;
                 const sx = center.sx - rowW / 2 + dotGap / 2 + col * dotGap;
                 const sy = dotsBaseY + row * (dotR * 2.2);
-                const dotColor = UNIT_COLORS[ent.description] || "#888";
+                const dotColor = config.unitColors[ent.description] || "#888";
                 return (<g key={ei}><circle cx={sx} cy={sy} r={dotR} fill={dotColor} stroke="rgba(0,0,0,0.5)" strokeWidth={0.8} />{ent.priority < 0.5 && <circle cx={sx} cy={sy} r={dotR} fill="rgba(0,0,0,0.4)" />}</g>);
               })}
               {view.scale > 3 && (

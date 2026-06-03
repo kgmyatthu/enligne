@@ -1,3 +1,6 @@
+import type { GameConfig } from '../constants/games/types';
+export type { GameConfig, GameId } from '../constants/games/types';
+
 export type EntityDescription = string;
 export interface EntityPreference { priority: number; description: EntityDescription; }
 export type UnitCategory = "INF" | "CAV" | "ART" | "NAV" | "GEN" | "ANY" | "OTH" | "MIX";
@@ -15,10 +18,16 @@ export interface RelativeBlock extends BlockBase { type: "relative"; relativeToB
 export interface SpanningBlock { id: number; type: "spanning"; spannedBlocks: number[]; }
 export type Block = AbsoluteBlock | RelativeBlock | SpanningBlock;
 
-export type Purpose = "Attack" | "Defend" | "River_Attack" | "Naval_Attack" | "Naval_Defend";
+/** AI purpose token. Valid values are game-specific (see each GameConfig). */
+export type Purpose = string;
+/** A single Shogun 2 minimum-unit-category requirement. */
+export interface MinCategory { category: string; percentage: number; }
 export interface Formation {
   name: string; priority: number; purposes: Purpose[];
+  /** NTW metadata: fixed min percentages. Unused (0) for category-percentage games. */
   min_artillery: number; min_infantry: number; min_cavalry: number;
+  /** Shogun 2 metadata: variable list of category requirements. Empty for NTW. */
+  minCategories: MinCategory[];
   factions: string[]; blocks: Block[];
 }
 
@@ -34,10 +43,12 @@ export interface FormationCanvasProps {
   formation: Formation | null; selectedBlockId: number | null; selectedBlockIds: Set<number>;
   onSelectBlock: (blockId: number, event?: React.MouseEvent) => void;
   onUpdateBlock: (blockId: number, update: Partial<BlockBase>) => void;
+  config: GameConfig;
   posScaleX: number; posScaleY: number; blockScale: number; blockThickness: number;
 }
 export interface PropertyEditorProps {
   formation: Formation | null; selectedBlockId: number | null; selectedBlockIds: Set<number>;
+  config: GameConfig;
   onUpdateFormation: (update: Partial<Formation>) => void;
   onUpdateBlock: (blockId: number, update: Partial<Block>) => void;
   onBulkUpdateBlocks: (update: BlockUpdate) => void;
@@ -45,10 +56,10 @@ export interface PropertyEditorProps {
   onDeleteBlock: (blockId: number) => void;
   onDuplicateBlock: (blockId: number) => void;
 }
-export interface ImportModalProps { onClose: () => void; onImport: (formations: Formation[]) => void; }
-export interface ExportModalProps { formations: Formation[]; onClose: () => void; }
+export interface ImportModalProps { config: GameConfig; onClose: () => void; onImport: (formations: Formation[]) => void; }
+export interface ExportModalProps { formations: Formation[]; config: GameConfig; onClose: () => void; }
 export interface AnchorPromptModalProps {
-  deletingId: number; candidates: (AbsoluteBlock | RelativeBlock)[];
+  deletingId: number; candidates: (AbsoluteBlock | RelativeBlock)[]; config: GameConfig;
   onConfirm: (newAnchorId: number) => void; onCancel: () => void;
 }
 export interface RubyRawBlock {

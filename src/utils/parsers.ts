@@ -1,21 +1,28 @@
 /**
  * @file utils/parsers.ts
- * @description Parsers for NTW GroupFormation data: binary .bin and Ruby .txt.
+ * @description Parsers for GroupFormation data: binary .bin (NTW + Shogun 2)
+ * and taw's Ruby .txt (NTW only).
  */
-import type { Formation, Block, RubyRawFormation, RubyRawBlock, Purpose } from '../types';
-import { PURPOSE_TO_BITS, INT_TO_SHAPE } from '../constants/formations';
-import { UNIT_CLASS_INT_TO_STR } from '../constants/units';
+import type { Formation, Block, MinCategory, RubyRawFormation, RubyRawBlock, Purpose, GameConfig } from '../types';
+import { INT_TO_SHAPE } from '../constants/formations';
+import { NTW } from '../constants/games/ntw';
+
+/** Decodes a purpose bitmask into the game's named purposes (stable order). */
+function decodePurposes(bits: number, game: GameConfig): Purpose[] {
+  const out: Purpose[] = [];
+  for (const name of game.allPurposes) {
+    const bit = game.purposeToBits[name];
+    if (bit && (bits & bit) === bit) out.push(name);
+  }
+  return out;
+}
 
 function rubyFormationToInternal(rf: RubyRawFormation): Formation {
   const purposeInt = parseInt(String(rf.purpose)) || 0;
-  const purposes: Purpose[] = [];
-  (Object.entries(PURPOSE_TO_BITS) as [Purpose, number][]).forEach(([name, bit]) => {
-    if (purposeInt & bit) purposes.push(name);
-  });
   return {
-    name: rf.name, priority: rf.priority || 0, purposes,
+    name: rf.name, priority: rf.priority || 0, purposes: decodePurposes(purposeInt, NTW),
     min_artillery: rf.min_artillery || 0, min_infantry: rf.min_infantry || 0, min_cavalry: rf.min_cavalry || 0,
-    factions: rf.factions || [],
+    minCategories: [], factions: rf.factions || [],
     blocks: (rf.lines || []).map((line: RubyRawBlock, i: number): Block => {
       if (line.type === "spanning") return { id: i, type: "spanning", spannedBlocks: line.blocks || [] };
       const shapeInt = parseInt(String(line.shape)) || 0;
@@ -28,7 +35,7 @@ function rubyFormationToInternal(rf: RubyRawFormation): Formation {
         relativeToBlock: line.relative_to ?? 0,
         entities: (line.pairs || []).map(p => {
           const classInt = parseInt(String(p.unit_class)) || 0;
-          return { priority: p.priority, description: UNIT_CLASS_INT_TO_STR[classInt] || `unknown_${classInt}` };
+          return { priority: p.priority, description: NTW.unitClassIntToStr[classInt] || `unknown_${classInt}` };
         }),
       } as Block;
     }),
@@ -52,8 +59,12 @@ export function parseRubyText(text: string): Formation[] {
   }
 }
 
-/** Port of taw's gfunpack — reads groupformations.bin via DataView. */
-export function parseBinary(buffer: ArrayBuffer): Formation[] {
+/**
+ * Reads a groupformations.bin for the given game.
+ * NTW and Shogun 2 share the block/entity wire format; only the per-formation
+ * metadata section and the enum integer mappings differ.
+ */
+export function parseBinary(buffer: ArrayBuffer, game: GameConfig): Formation[] {
   const dv = new DataView(buffer);
   let off = 0;
   const u4 = (): number => { const v = dv.getUint32(off, true); off += 4; return v; };
@@ -66,7 +77,7 @@ export function parseBinary(buffer: ArrayBuffer): Formation[] {
   };
   const readPairs = (): { priority: number; description: string }[] => {
     const c = u4(); const p: { priority: number; description: string }[] = [];
-    for (let i = 0; i < c; i++) { const pr = flt(); const ci = i4(); p.push({ priority: pr, description: UNIT_CLASS_INT_TO_STR[ci] || `unknown_${ci}` }); }
+    for (let i = 0; i < c; i++) { const pr = flt(); const ci = i4(); p.push({ priority: pr, description: game.unitClassIntToStr[ci] || `unknown_${ci}` }); }
     return p;
   };
   const readLine = (id: number): Block => {
@@ -76,16 +87,26 @@ export function parseBinary(buffer: ArrayBuffer): Formation[] {
     } else if (t === 1) { const pr=flt(); const rel=u4(); const sh=u4(); const sp=flt(); const cy=flt(); const x=flt(); const y=flt(); const mn=i4(); const mx=i4();
       return { id, type:"relative", blockPriority:pr, relativeToBlock:rel, arrangement:INT_TO_SHAPE[sh]||"Line", spacing:sp, crescentYOffset:cy, x, y, minThreshold:mn, maxThreshold:mx, entities:readPairs() };
     } else if (t === 3) { const c=u4(); const sb: number[]=[]; for(let i=0;i<c;i++) sb.push(u4()); return { id, type:"spanning", spannedBlocks:sb };
-    } else throw new Error(`Unknown line type ${t} at offset ${off-4}`);
+    } else throw new Error(`Unknown line type ${t} at offset ${off-4} — wrong game selected?`);
   };
   const readFormation = (): Formation => {
     const name=str(); const priority=flt(); const pi=u4();
-    const purposes: Purpose[] = [];
-    (Object.entries(PURPOSE_TO_BITS) as [Purpose,number][]).forEach(([n,bit])=>{ if(pi&bit) purposes.push(n); });
-    const ma=u4(); const mi=u4(); const mc=u4(); const fc=u4(); const factions:string[]=[]; for(let i=0;i<fc;i++) factions.push(str());
+    const purposes = decodePurposes(pi, game);
+    let ma = 0, mi = 0, mc = 0;
+    const minCategories: MinCategory[] = [];
+    if (game.metadataKind === "ntw-mins") {
+      ma = u4(); mi = u4(); mc = u4();
+    } else {
+      const cc = u4();
+      for (let i = 0; i < cc; i++) {
+        const cat = u4(); const pct = u4();
+        minCategories.push({ category: game.categoryIntToStr[cat] || `unknown_${cat}`, percentage: pct });
+      }
+    }
+    const fc=u4(); const factions:string[]=[]; for(let i=0;i<fc;i++) factions.push(str());
     const lc=u4(); const blocks:Block[]=[]; blocks.push(readLine(0));
     for(let i=1;i<lc;i++){ u4(); blocks.push(readLine(i)); }
-    return { name, priority, purposes, min_artillery:ma, min_infantry:mi, min_cavalry:mc, factions, blocks };
+    return { name, priority, purposes, min_artillery:ma, min_infantry:mi, min_cavalry:mc, minCategories, factions, blocks };
   };
   const fc = u4(); const formations:Formation[] = [];
   for(let i=0;i<fc;i++) formations.push(readFormation());
